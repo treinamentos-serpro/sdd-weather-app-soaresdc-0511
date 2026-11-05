@@ -33,15 +33,19 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: Validar token de administração
+        id: validate-token
         env:
           SETUP_TOKEN: ${{ secrets.SETUP_TOKEN }}
         run: |
           if [ -z "$SETUP_TOKEN" ]; then
-            echo "::error::Secret 'SETUP_TOKEN' ausente. Crie um PAT com 'Administration: write' e 'Contents: read' (ou PAT clássico com escopo 'repo') e adicione como secret 'SETUP_TOKEN' em Settings → Secrets and variables → Actions. O workflow não se desabilitará até isso ser configurado; basta dar um novo push na main depois."
-            exit 1
+            echo "::warning::Secret 'SETUP_TOKEN' ausente. Crie um PAT com 'Administration: write' e 'Contents: read' (ou PAT clássico com escopo 'repo') e adicione como secret 'SETUP_TOKEN' em Settings → Secrets and variables → Actions. As configurações administrativas foram ignoradas; execute novamente o workflow após configurar o secret."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Habilitar proteção da branch main
+        if: steps.validate-token.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.SETUP_TOKEN }}
         run: |
@@ -63,6 +67,7 @@ jobs:
           JSON
 
       - name: Configurar estratégia de merge (merge commit + auto-delete)
+        if: steps.validate-token.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.SETUP_TOKEN }}
         run: |
@@ -73,7 +78,8 @@ jobs:
             -F delete_branch_on_merge=true
 
       - name: Autodesabilitar este workflow
+        if: steps.validate-token.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh workflow disable "bootstrap-branch-protection.yml"
+          gh workflow disable "branch-protection.yml"
