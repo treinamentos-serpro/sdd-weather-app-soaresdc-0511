@@ -92,13 +92,15 @@ interface CurrentWeather {
   windDirectionDegrees: number | null; // Direção instantânea do vento, em graus.
   windGustKmh: number | null; // Rajada atual, em km/h.
   precipitationLastHourMm: number | null; // Precipitação na última hora, em mm.
-  surfacePressureHpa: number | null; // Pressão atmosférica de superfície, em hPa.
+  seaLevelPressureHpa: number | null; // Pressão atmosférica reduzida ao nível do mar, em hPa.
   observedAt: string | null; // Instante da observação normalizado para ISO 8601 UTC.
 }
 
 interface ForecastDay {
   localDate: string; // Data local YYYY-MM-DD no fuso da cidade.
-  temperatureMeanC: number | null; // Temperatura média diária, em Celsius.
+  weatherCode: number | null; // Código WMO da condição meteorológica.
+  temperatureMinC: number | null; // Temperatura mínima diária, em Celsius.
+  temperatureMaxC: number | null; // Temperatura máxima diária, em Celsius.
   relativeHumidityMeanPercent: number | null; // Umidade relativa média diária, em porcentagem.
   windMeanKmh: number | null; // Velocidade média diária do vento, em km/h.
   windDirectionDominantDegrees: number | null; // Direção predominante do vento, em graus.
@@ -120,9 +122,9 @@ Campos meteorológicos podem ser `null` quando o provedor não os retorna; a int
 ## Data Flow
 
 1. A pessoa digita e envia o nome da cidade. O cliente remove espaços externos e rejeita campo vazio, caracteres de controle e pontuação fora da lista permitida (FR1).
-2. O serviço chama o endpoint de geocoding com o texto codificado como parâmetro de URL e timeout total de 5 segundos.
+2. O serviço chama o endpoint de geocoding com o texto codificado como parâmetro de URL e timeout total de 10 segundos.
 3. O serviço mapeia candidatos, ordena com `Intl.Collator("pt-BR")`, desempata por país, região e ID, e apresenta até dois resultados (FR2). A seleção mantém `providerId` e coordenadas.
-4. Após seleção, o serviço solicita clima atual e previsão. Usar o fuso IANA do forecast; se ausente, usar `City.timezone` do geocoding. Se ambos estiverem ausentes, não calcular previsão local. As datas são agrupadas nesse fuso; médias usam todas as amostras horárias válidas do dia, sem presumir 24 amostras.
+4. Após seleção, o serviço solicita clima atual e previsão. Usar o fuso IANA do forecast; se ausente, usar `City.timezone` do geocoding. Se ambos estiverem ausentes, não calcular previsão local. Mínima, máxima e código WMO vêm dos dados diários; umidade e vento médios são agregados das amostras horárias por data local, sem presumir 24 amostras.
 5. A resposta é validada e mapeada para `WeatherData`. Dados parciais permanecem utilizáveis, com campos ausentes como `null`.
 6. O hook atualiza o estado React. A unidade escolhida altera apenas a formatação, sem nova chamada. Uma atualização manual bem-sucedida substitui os dados e seu horário de sucesso.
 7. Em falha de atualização, mantém-se o último `WeatherData` em `WeatherState.error.previous`; a UI deriva o rótulo “Desatualizado” desse estado e mostra o horário da última consulta bem-sucedida. Recarregar a página perde esse estado, conforme NFR4.
@@ -167,9 +169,9 @@ flowchart LR
 - **Parâmetros:**
 
 ```text
-current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,surface_pressure
-hourly=temperature_2m,relative_humidity_2m,wind_speed_10m
-daily=wind_direction_10m_dominant,wind_gusts_10m_max,precipitation_sum,precipitation_probability_max
+current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m,wind_gusts_10m,precipitation,pressure_msl
+hourly=relative_humidity_2m,wind_speed_10m
+daily=weather_code,temperature_2m_min,temperature_2m_max,wind_direction_10m_dominant,wind_gusts_10m_max,precipitation_sum,precipitation_probability_max
 forecast_days=5
 timezone=auto
 temperature_unit=celsius
@@ -179,7 +181,7 @@ pressure_unit=hPa
 ```
 
 - `timezone=auto` solicita ao provedor o fuso correspondente às coordenadas. Usar o fuso IANA da resposta forecast; se ausente, usar `City.timezone` do geocoding como fallback. Se ambos estiverem ausentes, aplicar AC-FR4.4 sem produzir previsão datada.
-- Temperatura e umidade médias e velocidade média do vento são calculadas localmente com as observações horárias de cada data local. Direção predominante, rajada máxima, precipitação acumulada e probabilidade máxima usam os campos diários solicitados.
+- Temperaturas mínima/máxima, código WMO, direção predominante, rajada máxima, precipitação acumulada e probabilidade máxima usam campos diários. Umidade e velocidade média do vento são calculadas localmente com observações horárias válidas de cada data local.
 - Consultas não incluem chave de API, localização do dispositivo, analytics nem dados pessoais. Requisições são feitas somente por HTTPS (NFR4, NFR6).
 
 ### Exemplos resumidos e mapeamento
@@ -225,7 +227,7 @@ Exemplo de forecast (amostras e dias reduzidos a um elemento; a resposta real co
     "wind_direction_10m": 240,
     "wind_gusts_10m": 21.3,
     "precipitation": 0.2,
-    "surface_pressure": 1014.2
+    "pressure_msl": 1014.2
   },
   "hourly": {
     "time": ["2026-11-05T12:00"],
@@ -235,6 +237,9 @@ Exemplo de forecast (amostras e dias reduzidos a um elemento; a resposta real co
   },
   "daily": {
     "time": ["2026-11-05"],
+    "weather_code": [2],
+    "temperature_2m_min": [14.0],
+    "temperature_2m_max": [21.0],
     "wind_direction_10m_dominant": [240],
     "wind_gusts_10m_max": [21.3],
     "precipitation_sum": [0.2],
@@ -247,9 +252,10 @@ Exemplo de forecast (amostras e dias reduzidos a um elemento; a resposta real co
 | --- | --- | --- |
 | `current.temperature_2m`, `relative_humidity_2m` | `CurrentWeather.temperatureC`, `relativeHumidityPercent` | Temperatura instantânea em °C e umidade em %. |
 | `current.wind_speed_10m`, `wind_direction_10m`, `wind_gusts_10m` | Campos de vento de `CurrentWeather` | Velocidade/rajada em km/h e direção em graus. |
-| `current.precipitation`, `surface_pressure`, `time` | `precipitationLastHourMm`, `surfacePressureHpa`, `observedAt` | Precipitação na hora anterior em mm, pressão em hPa e horário da observação. |
+| `current.precipitation`, `pressure_msl`, `time` | `precipitationLastHourMm`, `seaLevelPressureHpa`, `observedAt` | Precipitação na hora anterior em mm, pressão reduzida ao nível do mar em hPa e horário da observação. |
 | `hourly.time` | `ForecastDay.localDate` | Agrupar observações pela data no fuso local retornado. |
-| `hourly.temperature_2m`, `relative_humidity_2m`, `wind_speed_10m` | Campos `*Mean*` de `ForecastDay` | Média das observações válidas de cada dia local. |
+| `daily.weather_code`, `temperature_2m_min`, `temperature_2m_max` | `ForecastDay.weatherCode`, `temperatureMinC`, `temperatureMaxC` | Código WMO e extremos diários em Celsius. |
+| `hourly.relative_humidity_2m`, `wind_speed_10m` | `ForecastDay.relativeHumidityMeanPercent`, `windMeanKmh` | Média das observações válidas por data local. |
 | `daily.wind_direction_10m_dominant`, `wind_gusts_10m_max`, `precipitation_sum`, `precipitation_probability_max` | Campos correspondentes de `ForecastDay` | Direção em graus, rajada em km/h, precipitação em mm e probabilidade em %. |
 | Metadados `timezone`, `utc_offset_seconds` | `City.timezone`, `observedAt` e formatação | Fuso forecast tem precedência; offset normaliza `current.time` para UTC. Nunca usar o fuso do dispositivo como fallback. |
 
@@ -288,7 +294,7 @@ Estados explícitos: `idle` antes da primeira ação; `loading` enquanto a opera
 
 - **Rede:** erro de DNS, conexão ou CORS produz `WeatherError.kind = "network"`; não classificar como busca vazia. Mostrar mensagem clara e ação de retry manual.
 - **API:** resposta HTTP fora de 2xx produz `kind = "api"` (preservando status quando disponível). JSON inválido, estrutura inesperada ou campos incompatíveis produzem `kind = "invalid-response"`. Não expor detalhes internos do provedor na mensagem ao usuário.
-- **Timeout:** limitar cada operação iniciada pela pessoa a 5 segundos no total; cancelar com `AbortController`, ignorar respostas tardias, definir `kind = "timeout"` e oferecer retry manual. Não há retry automático (FR6–FR7).
+- **Timeout:** limitar cada operação iniciada pela pessoa a 10 segundos no total; cancelar com `AbortController`, ignorar respostas tardias, definir `kind = "timeout"` e oferecer retry manual. Não há retry automático (FR6–FR7).
 - **Geocoding vazio:** usar `SearchState.status = "empty"` e a mensagem “Cidade não encontrada. Verifique a grafia e tente novamente.”; não iniciar forecast.
 - **Resposta parcial:** mapear campos ausentes para `null`, exibir “Indisponível” nesses campos e manter os campos válidos. Payload parcial utilizável continua em `success`; ausência de todos os dados essenciais por resposta inválida é `invalid-response` (AC-FR3.2, AC-FR4.3).
 - **Falha ao atualizar:** manter `previous`, comunicar a falha e preservar `lastSuccessfulQueryAt`; a UI mostra “Desatualizado” quando há `previous` no estado de erro. Substituir os dados apenas após resposta válida (FR8).
@@ -300,7 +306,7 @@ Estados explícitos: `idle` antes da primeira ação; `loading` enquanto a opera
 ### Vitest
 
 - **Funções puras:** testar conversão Celsius/Fahrenheit, arredondamento para uma casa decimal e casos negativos/tie; normalização Unicode e espaços; rejeição de caracteres inválidos; collation e desempate de cidades; agregação horária por data local, incluindo mudança de dia e amostras ausentes; mapeamento de campos parciais para `null`; formatação de datas pt-BR.
-- **Services com `fetch` mockado:** substituir `globalThis.fetch` por respostas determinísticas e verificar URLs/parâmetros dos endpoints, mapeamento de payloads, status HTTP não-2xx, JSON inválido, falha de rede, timeout/abort após 5 segundos e descarte de resposta tardia. Não depender da disponibilidade real do Open-Meteo nos testes unitários.
+- **Services com `fetch` mockado:** substituir `globalThis.fetch` por respostas determinísticas e verificar URLs/parâmetros dos endpoints, mapeamento de payloads, status HTTP não-2xx, JSON inválido, falha de rede, timeout/abort após 10 segundos e descarte de resposta tardia. Não depender da disponibilidade real do Open-Meteo nos testes unitários.
 - **Componentes e hook com Testing Library:** cobrir `idle`, `loading`, `success`, `error` e `empty`; busca enviada por ação, seleção, mensagem sem resultados, mensagem de erro e timeout; campos parciais “Indisponível”; toggle de unidade sem nova chamada; retry manual; atualização falha preservando dados anteriores como desatualizados. Incluir interação por teclado nos controles principais.
 - **Acessibilidade:** usar `@axe-core/playwright` como dev dependency para auditar páginas e estados principais contra regras WCAG 2.2 AA. Complementar a automação com testes manuais de teclado, foco e leitor de tela; automação não comprova conformidade integral.
 
@@ -325,6 +331,6 @@ Avaliar o sucesso do produto exclusivamente por testes de usabilidade com a pers
 | Manter temperatura-base em Celsius e converter na renderização. | Solicitar novamente a API ao alternar unidade ou armazenar valores em ambas as unidades. | Evita requests e duplicação de estado; exige testes de conversão e arredondamento. |
 | Calcular médias diárias das observações horárias no cliente. | Usar apenas agregados diários do provedor ou criar agregação em backend. | Fornece as médias requeridas sem backend; exige agrupamento pelo fuso local e tratamento de dias com número variável de amostras. |
 | Mockar Open-Meteo nos testes automatizados. | Fazer os testes E2E dependerem do serviço real. | Produz testes rápidos e determinísticos; a integração real é validada separadamente no ambiente-alvo, pois serviço externo pode variar ou falhar. |
-| Timeout total de 5 segundos e retry manual. | Espera mais longa ou retry automático com backoff. | Cumpre FR6–FR7 e impede requests duplicados; redes lentas podem exigir nova ação da pessoa. |
+| Timeout total de 10 segundos e retry manual. | Espera mais longa ou retry automático com backoff. | Cumpre FR6–FR7 e impede requests duplicados; redes lentas ainda podem exigir nova ação da pessoa. |
 | Fuso retornado pelos endpoints diverge ou está ausente. | Usar o fuso de geocoding como autoridade, ou usar apenas o fuso de forecast sem fallback. | Forecast é a fonte de timezone da resposta meteorológica; geocoding é fallback. Se ambos faltarem, não há previsão diária local. |
 | Sem analytics de produção e sem persistência. | Coletar métricas ou guardar preferências/histórico. | Respeita NFR4 e o escopo; adoção é avaliada somente por testes de usabilidade, e estado é perdido ao fechar/recarregar a página. |

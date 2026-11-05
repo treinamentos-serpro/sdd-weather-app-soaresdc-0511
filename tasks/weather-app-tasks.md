@@ -72,8 +72,8 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 
 ### T-05 — Implementar agregação diária por fuso local
 - **Tipo:** Data
-- **Descrição:** agrupar amostras horárias por data local e calcular médias de temperatura, umidade e vento para os cinco dias previstos.
-- **Critérios de aceite:** recebe fuso IANA resolvido; calcula dias consecutivos sem depender do fuso do dispositivo; não presume exatamente 24 amostras; retorna campos ausentes como `null`; sem fuso em nenhuma fonte, não gera datas de previsão.
+- **Descrição:** agrupar amostras horárias por data local e calcular médias de umidade e vento para os cinco dias previstos.
+- **Critérios de aceite:** recebe fuso IANA resolvido; calcula dias consecutivos sem depender do fuso do dispositivo; não presume exatamente 24 amostras; retorna campos ausentes como `null`; mínimas/máximas e código WMO são preservados dos dados diários; sem fuso em nenhuma fonte, não gera datas de previsão.
 - **Dependências:** T-02.
 - **Arquivos prováveis:** `src/lib/dailyAggregation.ts`
 - **Rastreabilidade:** FR4; AC-FR4.1–AC-FR4.4.
@@ -105,7 +105,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-08 — Testar agregação diária e fuso
 - **Tipo:** Test
 - **Descrição:** validar agrupamento das observações e médias por data no fuso local.
-- **Critérios de aceite:** cobre amostras ausentes, mudança de dia entre UTC e fuso local, quantidades de amostras diferentes de 24 e ausência de fuso.
+- **Critérios de aceite:** verifica médias de umidade/vento para amostras válidas, mudança de dia entre UTC e fuso local, quantidade variável de amostras, preservação de temperatura min/max e código WMO dos dados diários e ausência de fuso.
 - **Dependências:** T-05.
 - **Arquivos prováveis:** `tests/unit/dailyAggregation.test.ts`
 - **Rastreabilidade:** AC-FR4.1–AC-FR4.4.
@@ -115,7 +115,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-09 — Implementar serviço de geocoding
 - **Tipo:** Data
 - **Descrição:** chamar o endpoint de busca diretamente via HTTPS, codificar parâmetros e devolver DTOs sem lógica de apresentação.
-- **Critérios de aceite:** envia `name`, `count=100`, `language=pt` e `format=json`; valida HTTP e JSON; aceita timeout/cancelamento de 5 segundos; não faz retry automático.
+- **Critérios de aceite:** envia `name`, `count=100`, `language=pt` e `format=json`; valida HTTP e JSON; usa `fetchWithTimeout` com cancelamento após 10 segundos; não faz retry automático.
 - **Dependências:** T-02.
 - **Arquivos prováveis:** `src/services/openMeteoService.ts`
 - **Rastreabilidade:** FR1–FR2, FR6–FR7; NFR4, NFR6.
@@ -123,7 +123,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-10 — Testar serviço de geocoding
 - **Tipo:** Test
 - **Descrição:** testar requisição, parsing e falhas do geocoding com `fetch` mockado.
-- **Critérios de aceite:** verifica URL/parâmetros, sucesso, resposta sem resultados, HTTP não-2xx, JSON inválido, falha de rede, abort em 5 segundos e descarte de resposta tardia.
+- **Critérios de aceite:** verifica URL/parâmetros, sucesso, resposta sem resultados, HTTP não-2xx, JSON inválido, falha de rede, timeout em 10 segundos, limpeza do timer e descarte de resposta tardia.
 - **Dependências:** T-09.
 - **Arquivos prováveis:** `tests/unit/openMeteoService.test.ts`
 - **Rastreabilidade:** FR1–FR2, FR6; AC-FR2.3, AC-FR6.4.
@@ -131,7 +131,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-11 — Implementar serviço de forecast
 - **Tipo:** Data
 - **Descrição:** buscar `current`, `hourly` e `daily` para as coordenadas selecionadas, com unidades e timezone especificados.
-- **Critérios de aceite:** envia os campos da spec, `forecast_days=5`, `timezone=auto`, Celsius, km/h, mm e hPa; valida status/JSON; aceita cancelamento e timeout total de 5 segundos; não repete automaticamente.
+- **Critérios de aceite:** envia os campos da spec, incluindo `pressure_msl`, além de `forecast_days=5`, `timezone=auto`, Celsius, km/h e mm; valida status/JSON; usa `fetchWithTimeout` de 10 segundos; não repete automaticamente.
 - **Dependências:** T-02.
 - **Arquivos prováveis:** `src/services/openMeteoService.ts`
 - **Rastreabilidade:** FR3–FR8; AC-FR3.1, AC-FR4.1, AC-FR6.4, AC-FR7.3.
@@ -147,7 +147,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-13 — Mapear respostas para WeatherData
 - **Tipo:** Data
 - **Descrição:** converter DTOs para modelos de domínio, respeitando precedência de fuso, campos parciais e timestamps.
-- **Critérios de aceite:** mapeia geocoding a `City`; usa timezone do forecast antes do geocoding; normaliza timestamps para UTC; agrega os cinco dias via T-05; mantém campos ausentes como `null`; retorna `WeatherData` sem flag stale duplicada.
+- **Critérios de aceite:** mapeia geocoding a `City`; usa timezone do forecast antes do geocoding; normaliza timestamps para UTC; mapeia `weather_code` e `temperature_2m_min/max`; agrega as médias horárias via T-05; mantém campos ausentes como `null`; retorna `WeatherData` sem flag stale duplicada.
 - **Dependências:** T-02, T-05.
 - **Arquivos prováveis:** `src/lib/weatherMapper.ts`
 - **Rastreabilidade:** FR2–FR4, FR8; AC-FR2.2, AC-FR3.2, AC-FR4.3, AC-FR4.4, AC-FR8.1.
@@ -155,7 +155,7 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 ### T-14 — Testar mapeamento e respostas parciais
 - **Tipo:** Test
 - **Descrição:** cobrir transformação de DTOs, timestamps, fuso e campos ausentes.
-- **Critérios de aceite:** fixtures validam correspondência dos campos, precedência de timezone, normalização UTC, dias locais e ausência parcial sem inventar valores.
+- **Critérios de aceite:** fixtures validam correspondência dos campos, precedência de timezone, normalização UTC, mapeamento de código WMO e temperaturas min/max, dias locais e ausência parcial sem inventar valores.
 - **Dependências:** T-13.
 - **Arquivos prováveis:** `tests/unit/weatherMapper.test.ts`
 - **Rastreabilidade:** AC-FR3.2, AC-FR4.1–AC-FR4.4, AC-FR8.1.
@@ -228,8 +228,8 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 
 ### T-33 — Implementar ForecastCard
 - **Tipo:** UI
-- **Descrição:** apresentar as métricas de um dia de previsão.
-- **Critérios de aceite:** mostra data local e campos diários; valores `null` aparecem como “Indisponível”; formatos seguem pt-BR.
+- **Descrição:** apresentar rótulo do dia, ícone/condição WMO, temperaturas mínima/máxima na unidade selecionada e probabilidade de chuva.
+- **Critérios de aceite:** data usa helper de `lib/format`; ícone/descrição vêm de `lib/weatherCodes`; mín/máx usam `lib/temperature` e refletem `Unit`; probabilidade mostra percentual ou “Indisponível”; campo ausente não oculta os demais dados válidos.
 - **Dependências:** T-02, T-05, T-13, T-15.
 - **Arquivos prováveis:** `src/components/ForecastCard.tsx`
 - **Rastreabilidade:** FR4; AC-FR4.1–AC-FR4.3; NFR2, NFR5.
@@ -244,8 +244,8 @@ Todos os requisitos funcionais FR1–FR8 têm tarefas de implementação e valid
 
 ### T-35 — Testar ForecastCard
 - **Tipo:** Test
-- **Descrição:** validar card diário completo e parcial.
-- **Critérios de aceite:** cobre métricas, unidades e marcador “Indisponível” sem ocultar campos válidos.
+- **Descrição:** validar rótulo, ícone, mín/máx, probabilidade e dados ausentes no card.
+- **Critérios de aceite:** testa código WMO conhecido/desconhecido, rótulo pt-BR, conversão Celsius/Fahrenheit das mín/máx e probabilidade percentual; quando um campo é `null`, mostra “Indisponível” sem ocultar outros campos.
 - **Dependências:** T-33.
 - **Arquivos prováveis:** `tests/unit/ForecastCard.test.tsx`
 - **Rastreabilidade:** AC-FR4.2–AC-FR4.3; NFR2, NFR5.

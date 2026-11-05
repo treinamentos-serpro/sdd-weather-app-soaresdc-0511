@@ -43,7 +43,7 @@ https://geocoding-api.open-meteo.com/v1/search?name={cidade}&count=5&language=pt
 **Forecast**
 ```
 https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}
-  &current=temperature_2m,relative_humidity_2m,wind_speed_10m,surface_pressure,precipitation,weather_code
+  &current=temperature_2m,relative_humidity_2m,wind_speed_10m,pressure_msl,precipitation,weather_code
   &daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max
   &forecast_days=5&timezone=auto
 ```

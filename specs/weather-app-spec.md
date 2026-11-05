@@ -10,10 +10,10 @@ A fonte meteorológica definida é Open-Meteo, sem API key, chamada diretamente 
 
 - **FR1 — Pesquisar cidade:** a pessoa informa o nome de uma cidade e inicia a busca por ação explícita; não há busca automática enquanto digita. Aceitar letras Unicode, marcas diacríticas, números, espaços, hífens, apóstrofos e pontos; remover espaços no início e no fim e rejeitar caracteres de controle e demais pontuações.
 - **FR2 — Exibir e selecionar resultados:** ordenar todos os candidatos pelo nome da cidade usando collation pt-BR e, em caso de empate, por país, região e identificador do provedor; apresentar no máximo os dois primeiros. Cada resultado exibe nome e país, região/estado quando disponível e coordenadas quando nome, país e região/estado não bastarem para distingui-lo. A seleção mantém o identificador único do local.
-- **FR3 — Exibir clima atual:** para a cidade selecionada, exibir temperatura e umidade instantâneas, vento atual com velocidade, direção e rajadas, precipitação acumulada na última hora e pressão atmosférica de superfície atual.
-- **FR4 — Exibir previsão:** apresentar uma previsão diária para hoje e os quatro dias seguintes, segundo o fuso local da cidade selecionada. Para cada dia, exibir médias diárias de temperatura e umidade, velocidade média do vento, direção predominante, rajadas máximas, precipitação acumulada no dia e probabilidade máxima de precipitação.
+- **FR3 — Exibir clima atual:** para a cidade selecionada, exibir temperatura e umidade instantâneas, vento atual com velocidade, direção e rajadas, precipitação acumulada na última hora e pressão atmosférica atual reduzida ao nível do mar.
+- **FR4 — Exibir previsão:** apresentar uma previsão diária para hoje e os quatro dias seguintes, segundo o fuso local da cidade selecionada. Para cada dia, exibir temperaturas mínima e máxima, código/ícone e condição meteorológica, umidade média, velocidade média do vento, direção predominante, rajadas máximas, precipitação acumulada e probabilidade máxima de precipitação.
 - **FR5 — Alternar unidades:** iniciar temperaturas em Celsius e permitir alternar entre Celsius e Fahrenheit, exibidas com uma casa decimal e arredondamento para o décimo mais próximo (empates afastados de zero). Exibir vento em km/h, precipitação em mm e pressão em hPa.
-- **FR6 — Comunicar estados da consulta:** apresentar estados distintos de carregamento, erro, timeout e ausência de resultados para busca e consulta meteorológica. A operação iniciada pela pessoa tem prazo total de 5 segundos, incluindo as chamadas necessárias ao provedor; respostas recebidas após o prazo são ignoradas.
+- **FR6 — Comunicar estados da consulta:** apresentar estados distintos de carregamento, erro, timeout e ausência de resultados para busca e consulta meteorológica. A operação iniciada pela pessoa tem prazo total de 10 segundos, incluindo as chamadas necessárias ao provedor; respostas recebidas após o prazo são ignoradas.
 - **FR7 — Repetir consulta com falha:** permitir que a pessoa inicie uma nova tentativa após falha ou timeout, mantendo a cidade selecionada. Não realizar novas tentativas automaticamente.
 - **FR8 — Atualizar dados manualmente:** permitir iniciar uma nova consulta para atualizar os dados. Em caso de falha, manter os últimos dados bem-sucedidos, identificá-los como desatualizados, informar que a atualização falhou e indicar o horário de conclusão da última consulta bem-sucedida. Não há atualização automática.
 
@@ -66,7 +66,7 @@ A fonte meteorológica definida é Open-Meteo, sem API key, chamada diretamente 
 - **AC-FR3.1**
 	- **Given** uma cidade foi selecionada e o provedor retorna todos os campos atuais solicitados
 	- **When** a consulta do clima atual termina com sucesso
-	- **Then** a interface apresenta temperatura e umidade instantâneas, velocidade e direção atuais do vento, rajadas, precipitação acumulada na última hora e pressão de superfície, usando Celsius, km/h, mm e hPa, respectivamente.
+	- **Then** a interface apresenta temperatura e umidade instantâneas, velocidade e direção atuais do vento, rajadas, precipitação acumulada na última hora e pressão reduzida ao nível do mar, usando Celsius, km/h, mm e hPa, respectivamente.
 - **AC-FR3.2**
 	- **Given** uma cidade foi selecionada e o provedor não retorna um ou mais campos atuais solicitados
 	- **When** o clima atual é apresentado
@@ -78,7 +78,7 @@ A fonte meteorológica definida é Open-Meteo, sem API key, chamada diretamente 
 - **AC-FR4.2**
 	- **Given** o provedor retorna os campos previstos para cada uma das cinco datas
 	- **When** a previsão é apresentada
-	- **Then** cada dia mostra temperatura e umidade médias diárias, velocidade média do vento, direção predominante, rajada máxima, precipitação acumulada no dia e probabilidade máxima de precipitação.
+	- **Then** cada dia mostra temperaturas mínima e máxima, ícone e descrição da condição WMO, umidade e velocidade média do vento, direção predominante, rajada máxima, precipitação acumulada e probabilidade máxima.
 - **AC-FR4.3**
 	- **Given** o provedor não retorna um ou mais campos previstos para uma data
 	- **When** essa data é apresentada
@@ -121,8 +121,8 @@ A fonte meteorológica definida é Open-Meteo, sem API key, chamada diretamente 
 	- **Then** comunica o estado vazio com a mensagem definida em AC-FR2.3, sem apresentá-lo como erro.
 - **AC-FR6.4**
 	- **Given** uma operação iniciada pela pessoa ainda aguarda resposta do provedor
-	- **When** 5 segundos se passam desde o início da operação
-	- **Then** o sistema encerra a operação, ignora respostas tardias, exibe “A consulta excedeu 5 segundos. Tente novamente.” e oferece uma ação de nova tentativa, sem apresentar o timeout como ausência de resultados.
+	- **When** 10 segundos se passam desde o início da operação
+	- **Then** o sistema encerra a operação, ignora respostas tardias, exibe “A consulta excedeu 10 segundos. Tente novamente.” e oferece uma ação de nova tentativa, sem apresentar o timeout como ausência de resultados.
 - **AC-FR7.1**
 	- **Given** uma consulta falhou e a cidade selecionada permanece disponível
 	- **When** a pessoa aciona tentar novamente
@@ -178,7 +178,7 @@ A fonte meteorológica definida é Open-Meteo, sem API key, chamada diretamente 
 - Cidades com nome e país iguais: incluir região/estado quando disponível; se nome, país e região/estado não distinguirem os resultados, apresentar coordenadas. A seleção deve permanecer vinculada ao identificador único do local.
 - A resposta do provedor não contém um ou mais campos solicitados: mostrar “Indisponível” em cada campo ausente e manter visíveis os demais dados válidos.
 - Falha de rede, limite de uso ou erro do provedor: mostrar “Não foi possível consultar os dados do tempo. Tente novamente.” e oferecer nova tentativa manual sem perder a cidade selecionada.
-- Timeout: após 5 segundos desde o início da operação, encerrar a espera, ignorar respostas tardias, informar “A consulta excedeu 5 segundos. Tente novamente.” e não repetir automaticamente.
+- Timeout: após 10 segundos desde o início da operação, encerrar a espera, ignorar respostas tardias, informar “A consulta excedeu 10 segundos. Tente novamente.” e não repetir automaticamente.
 - Atualização manual falha após uma consulta anterior bem-sucedida: manter os dados anteriores com o rótulo “Desatualizado”, informar a falha e preservar o horário de conclusão da última consulta bem-sucedida.
 - A cidade selecionada não tem fuso horário disponível: não usar o fuso do dispositivo para inventar datas; manter dados atuais se disponíveis e informar que a previsão local não pôde ser calculada.
 - Mudança de dia no fuso local da cidade: as cinco datas devem ser determinadas pelo fuso local, não pelo fuso do dispositivo do usuário.
